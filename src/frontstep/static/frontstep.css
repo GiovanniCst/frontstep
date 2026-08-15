@@ -1,0 +1,933 @@
+/* SPDX-License-Identifier: Apache-2.0
+   Copyright 2026 Giovanni J. Costantini */
+/* ============================================================================
+   Frontstep — the aggregated view of every project.
+
+   **Two channels, two questions.** A card has to say both whose work it is
+   and how far along it is, and two marks of the same strength would cover each
+   other:
+     - the PAPER (background) carries the STATUS — it is the large surface, and
+       it is what you scan while scrolling: blue open, grey paused, green
+       closed. The section title says the status too, but titles scroll away
+       and paper does not: half way down the page the background is the only
+       thing telling you where you are;
+     - the BAND on top carries the PRIMARY TAG — a narrow, saturated mark, and
+       the only strong colour channel of the card: the other tags are badges.
+   Papers stay nearly colourless (low chroma) and bands stay saturated: it is
+   that gap that makes the hierarchy, not the position.
+   ========================================================================== */
+:root {
+  --plane:      #0a0e17;
+  --surface:    #131d2e;
+  --surface-2:  #1a2436;
+  --border:     #253651;
+  --border-soft:#1c2942;
+  --ink:        #e8f0fb;
+  --ink-2:      #9aadc8;
+  /* Was #61748f: 3.65:1 on the panels, below the 4.5:1 small text needs, and
+     project titles, dates and labels all run on this grey. */
+  --ink-3:      #8494ab;
+  --accent:     #38bdf8;
+  --accent-ink: #0a0e17;
+  /* The accent as the BACKGROUND of text (a selected pill). On dark it is the
+     same colour; on light it is not, and the reason is in the light block. */
+  --accent-solid: var(--accent);
+
+  /* who holds the ball */
+  --st-active:      #38bdf8;
+  --st-waiting:   #f59331;
+  --st-paused:     #6b7c96;
+  --st-done:    #33c481;
+  --st-undeclared: #f0616d;
+
+  /* The paper: the status. The band on top: the primary tag. */
+  --paper-open:   #0f1d31;
+  --paper-paused:  #171b24;
+  --paper-closed: #0f2419;
+
+  /* The tag palette: seven hues, assigned to each tag deterministically (sha1
+     of its name, see `color_index`). Seven because that is how many can be told
+     apart in a narrow band: more colours only get you two different tags that
+     look the same.
+     ⚠️ NO RED, and there are seven rather than eight because of it. Red is the
+     one colour that carries a meaning by itself on a page about state, and a
+     tag that hashed onto it made a healthy project read as an alarm. Nothing
+     replaced it: measured, the widest gap left is between brass and green, and
+     everything that fits there lands ~ΔE 24 from a neighbour in the light
+     theme. Every pair here IS measured, by `tests/test_contrast.py`, which
+     computes the ratios from these very values in both themes. */
+  --tag-0: #d0bf55;   /* brass */
+  --tag-1: #f472b6;   /* pink */
+  --tag-2: #38bdf8;   /* sky */
+  --tag-3: #4ade80;   /* green */
+  --tag-4: #c084fc;   /* violet */
+  --tag-5: #fb923c;   /* orange */
+  --tag-6: #22d3ee;   /* cyan */
+  /* The text ON the band: the hues are light and saturated, so it wants a dark
+     ink. One ink for all of them: it is the background that changes. */
+  --band-ink: #16181d;
+
+  /* Tinted washes and borders. They live here and not inside the rules,
+     because an rgba() written by hand in a component is a dark-theme colour the
+     light theme cannot correct. And they are not the same values at another
+     opacity: on a light background an 8% wash disappears. */
+  --wash-accent:   rgba(56,189,248,.22);
+  --wash-accent-2: rgba(56,189,248,.05);
+  --bd-accent:     rgba(56,189,248,.35);
+  --ring-flash:    rgba(56,189,248,.18);
+  --wash-waiting-box:   rgba(245,147,49,.10);
+  --bd-waiting-box:     rgba(245,147,49,.30);
+  /* The warning red: diagnostic badges and the armed button ("Sure?").
+     No longer staleness — those alarms are gone. */
+  --wash-alert:    rgba(240,97,109,.12);
+  --bd-alert:      rgba(240,97,109,.45);
+  /* The --st-* are MARK colours (ticks, borders, dots): 3:1 is enough.
+     Where the same colour becomes small TEXT, 4.5:1 is needed, and on light
+     the mark amber and red do not get there. Hence these two tokens. */
+  --ink-waiting-box: #f0a860;
+  --ink-alert:  var(--st-undeclared);
+  /* The description says WHAT the project is, and it is the line that actually
+     gets read while scrolling: it used to sit on the --ink-2 of metadata and
+     vanished. It has a token of its own, one step below full text and above
+     metadata — not black, which is not used here: the cool tint stays even when
+     the text gets strong. */
+  --ink-desc:   #dae5f4;
+
+  --topbar-bg: rgba(12,18,30,.9);
+  --radius: 12px;
+  --shadow: 0 1px 0 rgba(255,255,255,.03), 0 8px 24px -18px rgba(0,0,0,.9);
+  /* IBM Plex, one superfamily in three registers: Sans for text, the Condensed
+     cut for titles and the wordmark, Mono for paths, dates and numbers.
+     Using a cut instead of a second family is the choice that keeps one voice.
+     Gone are Inter + Space Grotesk, the default pairing of every dashboard
+     generated today: precisely the look worth standing apart from. */
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "IBM Plex Sans Condensed", var(--sans);
+}
+
+/* Light theme: the page plane is a soft blue-grey and NEVER pure white — on a
+   bright screen 100% white glares and the panels disappear into it. */
+:root[data-theme="light"] {
+  --plane:      #dfe5ee;
+  --surface:    #f5f7fb;
+  --surface-2:  #e8edf5;
+  --border:     #c7d2e2;
+  --border-soft:#dae2ed;
+  --ink:        #1e2a3d;
+  --ink-2:      #43536d;
+  /* #76869b sits at 3.4:1 on light panels, and ink-3 is not decoration here:
+     project titles and dates are written in it. Darkened just enough to clear
+     4.5:1 on the page plane too, which is darker than the panels — while
+     staying the muted grey of the hierarchy. */
+  --ink-3:      #566379;
+  --accent:     #0b6da8;
+  --accent-ink: #ffffff;
+  /* White on #0b7ec2 sits at 4.4:1, just under the line: the background of a
+     selected pill is one step darker. The accent stays as it is for borders,
+     icons and links, where 4.4:1 is not a problem. */
+  --accent-solid: #0a6198;
+
+  --st-active:      #0b6da8;
+  --st-waiting:   #c06400;
+  --st-paused:     #68778d;
+  --st-done:    #17894b;
+  --st-undeclared: #c0392f;
+
+  /* On light a tint reads sooner than on dark: the papers stay faint, a panel
+     has to keep looking like a panel. */
+  --paper-open:   #e6f0fb;
+  --paper-paused:  #eaedf3;
+  --paper-closed: #e2f3e8;
+  /* On light the same seven hues drop two steps, and MEASURED (14/08/2026, see
+     tests/test_contrast.py): a tag is text twice over — the app name on the
+     band, and the tag itself as a badge in the footer — so it needs the 4.5:1
+     of text on both, not the 3:1 of a mark. Four were below it on the badge:
+     darkened at constant hue and saturation, so the palette keeps its identity
+     and only gains depth. */
+  --tag-0: #786914;
+  --tag-1: #b62478;
+  --tag-2: #0b6da8;
+  --tag-3: #147942;
+  --tag-4: #7c3aed;
+  --tag-5: #ac4f09;
+  --tag-6: #0e738e;
+  --band-ink: #ffffff;
+
+  --wash-accent:   rgba(11,109,168,.14);
+  --wash-accent-2: rgba(11,109,168,.04);
+  --bd-accent:     rgba(11,109,168,.32);
+  --ring-flash:    rgba(11,109,168,.20);
+  --wash-waiting-box:   rgba(192,100,0,.10);
+  --bd-waiting-box:     rgba(192,100,0,.34);
+  --wash-alert:    rgba(214,69,80,.13);
+  --bd-alert:      rgba(214,69,80,.45);
+  /* Amber and red darkened for text: #c67a00 on a light panel sits at
+     3.1:1 and #d64550 at 4.0:1 — below the 4.5:1 small text requires. */
+  --ink-waiting-box: #8a4f00;
+  --ink-alert:  #b3202d;
+  --ink-desc:   #26334a;
+
+  --topbar-bg: rgba(245,247,251,.92);
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 10px 26px -20px rgba(16,24,40,.35);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--plane); color: var(--ink);
+  font-family: var(--sans); font-size: 14px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; }
+button { font-family: inherit; cursor: pointer; }
+a { color: inherit; }
+code { font-family: var(--mono); font-size: .85em; background: var(--surface-2);
+  padding: .08em .4em; border-radius: 5px; color: var(--ink-2); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* readable by a screen reader, invisible on screen */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---- topbar -------------------------------------------------------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+  padding: .55rem 1.1rem; background: var(--topbar-bg);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: .7rem; text-decoration: none; }
+.brand-mark {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border-radius: 10px; color: var(--accent); font-size: 1.05rem;
+  background: radial-gradient(120% 120% at 30% 20%, var(--wash-accent), var(--wash-accent-2));
+  border: 1px solid var(--bd-accent);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-title { font-family: var(--display); font-weight: 600; font-size: 1.05rem; letter-spacing: .2px; }
+.brand-flow { font-size: .68rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: .09em; }
+.brand-flow i { font-size: .6rem; margin: 0 .28em; color: var(--accent); opacity: .8; }
+
+/* ⚠️ `flex-wrap` here too, not only on `.topbar`: a parent that wraps does not
+   make its child wrap, and this block alone pushed the page 217px wider than a
+   375px screen. */
+.topbar-ctl { display: flex; align-items: center; gap: .55rem; margin-left: auto;
+  flex-wrap: wrap; justify-content: flex-end; }
+.ctl {
+  display: inline-flex; align-items: center; gap: .45rem;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+  padding: .42rem .7rem; border-radius: 9px; font-size: .82rem; font-weight: 500;
+  text-decoration: none; transition: border-color .15s;
+}
+.ctl:hover { border-color: var(--accent); }
+/* Not a button: it says the dashboard is configured read-only, in the place
+   where the command that writes would otherwise be. An empty space there would
+   read as a missing feature instead of a chosen setting. */
+.ctl-flat { background: none; color: var(--ink-3); border-style: dashed; cursor: help; }
+
+/* The theme selector: three choices, two themes — "auto" is not a theme, it is
+   "follow the system". A segmented control says it in one gesture (one choice
+   out of a few), and no second way of showing it is needed. */
+.seg-theme button { padding: .34rem .52rem; line-height: 1.1; }
+.seg-theme button i { font-size: .82rem; }
+.seg-theme button[aria-checked="true"] {
+  background: var(--accent-solid); color: var(--accent-ink); font-weight: 600;
+}
+
+.wrap { max-width: 1400px; margin: 0 auto; padding: 1.1rem 1.1rem 3rem; }
+
+/* ============================================================================
+   THE SIGNATURE — the silence line.
+   One axis: today on the right, the project that has been quiet longest on the
+   left. Each tick is a project, coloured by who holds the ball. No single
+   status document can show this: it is exactly what aggregating adds, and it
+   makes visible the tail nobody looks at any more.
+   ========================================================================== */
+.silence {
+  padding: .9rem 1.1rem 1.1rem; margin-bottom: 1.1rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+/* ⚠️ The explanation goes on its OWN LINE, always — it used to sit beside the
+   title and drop below it only when the two together did not fit.
+
+   That made the layout depend on how long a word is in the language being read.
+   Measured: `Silence line` left room and the sentence stayed alongside, while
+   `Linea del silenzio` did not and pushed it down — 22px of header in English
+   against 52px in Italian, and the whole section 29px taller in one language
+   than in the other. A third language would land wherever its title happened to
+   fall.
+   `flex-basis: 100%` on the explanation is what makes the break a decision
+   rather than an accident of measurement. */
+.silence-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: .25rem .8rem; flex-wrap: wrap; margin-bottom: .9rem; }
+.silence-title { font-family: var(--display); font-size: .95rem; font-weight: 600;
+  display: flex; align-items: center; gap: .5rem; }
+.silence-title i { color: var(--accent); font-size: .85rem; }
+.silence-hint { flex-basis: 100%; font-size: .72rem; color: var(--ink-3); }
+
+.silence-axis {
+  position: relative; height: 62px; margin: 0 .2rem 1.3rem;
+  border-bottom: 1px solid var(--border);
+}
+/* The band past the threshold: the territory where a project really is stuck.
+   Its label sits at the FAR RIGHT of the band, against the dashed edge: that
+   is the boundary it describes. On the left — where it used to be — the "7d"
+   ended up next to the grid's "90d" and the row read as a contradiction,
+   because the eye pairs the label's number with the one right below it. */
+.tick {
+  position: absolute; bottom: 0; width: 3px; height: 26px; padding: 0;
+  border: 0; border-radius: 2px 2px 0 0; transform: translateX(-50%);
+  background: var(--st-paused); cursor: pointer; transition: height .15s, opacity .15s;
+  opacity: .85;
+}
+/* A tick is 3px wide so it does not lie about its position, but 3px cannot be
+   clicked: an invisible pseudo-element widens the hit area.
+   ⚠️ Measured at 375px: 17×36. The HEIGHT clears the 24px of WCAG 2.5.8, the
+   width does not, and widening it further is the wrong fix — the ticks sit
+   logarithmically and crowd together on the right, so 24px boxes would overlap
+   and a tap would land on the neighbour. That is conformance on paper and a
+   worse target in the hand. This is 2.5.8's *Essential* exception: the position
+   of a tick IS the information, and a target wide enough to be comfortable
+   would be a tick in the wrong place. Every tick also carries a title and a
+   screen-reader label, is reachable by keyboard, and the same card is reachable
+   by scrolling and by the search box. */
+.tick::before { content: ""; position: absolute; inset: -8px -8px -6px -8px; }
+.tick:hover, .tick:focus-visible { height: 40px; opacity: 1; }
+.tick[data-status="active"]    { background: var(--st-active); }
+.tick[data-status="waiting"] { background: var(--st-waiting); }
+.tick[data-status="paused"]   { background: var(--st-paused); }
+.tick[data-status="undeclared"]{ background: var(--st-undeclared); }
+/* The grid ticks sit ON the axis, at their logarithmic position: a non-linear
+   scale has to be labelled where its values fall, not at half width. */
+.silence-grid { position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--border-soft); pointer-events: none; }
+.silence-grid i { position: absolute; bottom: -1.15rem; left: 0; transform: translateX(-50%);
+  font-family: var(--mono); font-style: normal; font-size: .62rem; color: var(--ink-3); }
+
+.silence-scale { display: flex; justify-content: space-between; margin-top: .4rem;
+  font-family: var(--mono); font-size: .66rem; color: var(--ink-3); }
+
+/* ---- filter bar ---------------------------------------------------------- */
+.filterbar {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  margin-bottom: 1.2rem; padding: .55rem .7rem;
+  background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius);
+}
+.filterbar-lbl { display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .64rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; }
+.filterbar-lbl i { font-size: .78rem; opacity: .8; }
+.segmented { display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 9px; padding: 2px; gap: 2px; }
+.segmented a, .segmented button {
+  background: transparent; border: 0; color: var(--ink-2); text-decoration: none;
+  font-size: .78rem; font-weight: 500; padding: .34rem .62rem; border-radius: 7px;
+  white-space: nowrap; transition: background .15s, color .15s;
+}
+.segmented a:hover, .segmented button:hover { color: var(--ink); }
+.segmented .on { background: var(--accent-solid); color: var(--accent-ink); font-weight: 600; }
+/* "Quiet for" is single-choice, not a toggle like the sections: the selected
+   one fills in rather than the others dimming, so it reads as one of many. */
+.threshold-btn[aria-pressed="true"] {
+  background: var(--accent-solid); color: var(--accent-ink); font-weight: 600;
+}
+/* The search box SHRINKS instead of wrapping: with a fixed width and
+   `margin-left:auto`, as soon as the filters grew by one button it ended up on
+   a row of its own, doubling the height of the bar for one text field. It is now
+   the only elastic element in the bar — the others have a size that does not
+   compress — and below 140px it gives up and wraps, which by then is right. */
+.search { position: relative; display: inline-flex; align-items: center;
+  margin-left: auto; flex: 1 1 110px; min-width: 110px; max-width: 260px; }
+.search i { position: absolute; left: .6rem; color: var(--ink-3); font-size: .74rem; }
+.search input {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+  border-radius: 8px; padding: .36rem .5rem .36rem 1.8rem; font-size: .8rem; width: 100%;
+}
+.search input:focus { outline: none; border-color: var(--accent); }
+
+/* The section buttons: they carry the dot and the count of the section they
+   switch on, so the filter and the title further down are recognisably the same
+   thing. Off = that section is not on the page.
+   The tags wear a different face on purpose: they start off and get switched
+   on, so they are another grammar of filter and must not look like this one. */
+.section-btn { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
+.section-btn[aria-pressed="true"] {
+  background: var(--wash-accent-2);
+  border: 1px solid var(--bd-accent); color: var(--ink); font-weight: 600;
+  padding: calc(.34rem - 1px) calc(.62rem - 1px); }
+.section-btn[aria-pressed="false"] { opacity: .55; }
+.section-btn[aria-pressed="false"]:hover { opacity: .85; }
+.section-btn[aria-pressed="false"] .group-dot { filter: grayscale(1); }
+.section-btn .group-n { font-size: .68rem; }
+
+/* ---- sections ------------------------------------------------------------ */
+.group { margin-bottom: 1.8rem; }
+.group-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem;
+  padding-bottom: .45rem; border-bottom: 1px solid var(--border-soft); }
+.group-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.group-title { font-family: var(--display); font-size: .95rem; font-weight: 600; }
+.group-n { font-family: var(--mono); font-size: .74rem; color: var(--ink-3); }
+
+/* `min()` is not decoration: below ~330px a `minmax(300px, …)` track is wider
+   than the column holding it, and a grid does not shrink a track under its
+   minimum — the cards would push the whole page sideways. With `min()` the
+   track gives up its floor when there is no room. */
+.grid { display: grid; gap: .85rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+
+/* ---- card ---------------------------------------------------------------- */
+/* Small cards: you look at a whole page of projects, not one card at a time.
+   Three fixed rows — where it is, what it is, what happens next — and nothing
+   else.
+   Small but not cramped: the three rows are three different things and read as
+   three blocks, so the air between them is what separates them. */
+/* Paper and ink, which is how two colour codes live on one card without
+   fighting: the BACKGROUND is the paper the project is written on (its status:
+   a wide, nearly colourless tint), the BAND and the dot are ink (who holds the
+   ball: read quickly, so a narrow saturated mark).
+   The hierarchy is in the gap of saturation — paper below 10%, ink above 40% —
+   not in the position: two tints of the same strength would read as one
+   coloured noise. */
+.card {
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-top: 4px solid var(--border);
+  border-radius: 10px; padding: .8rem .95rem .7rem; box-shadow: var(--shadow);
+  transition: border-color .15s, transform .15s, opacity .25s;
+}
+.card:hover { transform: translateY(-1px); }
+
+/* The band carrying the app name, coloured by the PRIMARY TAG — the first one,
+   inherited from the root. It is the only strong colour channel of the card:
+   the other tags are badges in the footer, because five coloured bands would
+   turn the card back into noise. The name is the product — Frontstep, not
+   `frontstep` — and the folder stays below, in mono, answering another
+   question (where am I writing). */
+.card-band {
+  margin: -.8rem -1rem .6rem;            /* cancels the card padding: the band touches the edges */
+  padding: .3rem .95rem .28rem;
+  font-family: var(--display); font-size: .82rem; font-weight: 600;
+  letter-spacing: .04em; line-height: 1.2;
+  border-radius: 5px 5px 0 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card-band { color: var(--band-ink); }
+.card-band[data-color="0"] { background: var(--tag-0); }
+.card-band[data-color="1"] { background: var(--tag-1); }
+.card-band[data-color="2"] { background: var(--tag-2); }
+.card-band[data-color="3"] { background: var(--tag-3); }
+.card-band[data-color="4"] { background: var(--tag-4); }
+.card-band[data-color="5"] { background: var(--tag-5); }
+.card-band[data-color="6"] { background: var(--tag-6); }
+
+/* The secondary tags: badges in the footer, in their tag's colour but as a
+   MARK — border and text, not a solid fill. A solid fill for each would make
+   five blotches at the bottom of the card, and the primary tag would lose its
+   primacy. */
+.badge-tag { font-weight: 600; }
+.badge-tag[data-color="0"] { color: var(--tag-0); border-color: var(--tag-0); }
+.badge-tag[data-color="1"] { color: var(--tag-1); border-color: var(--tag-1); }
+.badge-tag[data-color="2"] { color: var(--tag-2); border-color: var(--tag-2); }
+.badge-tag[data-color="3"] { color: var(--tag-3); border-color: var(--tag-3); }
+.badge-tag[data-color="4"] { color: var(--tag-4); border-color: var(--tag-4); }
+.badge-tag[data-color="5"] { color: var(--tag-5); border-color: var(--tag-5); }
+.badge-tag[data-color="6"] { color: var(--tag-6); border-color: var(--tag-6); }
+
+/* The tag bar: buttons that start off and light up in their tag's colour, so
+   that a lit filter and the badge on a card are recognisably the same thing.
+   It wraps by itself: there are as many tags as someone makes. */
+.tagbar { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.tag-btn {
+  font: inherit; font-size: .74rem; cursor: pointer;
+  padding: .22rem .5rem; border-radius: 999px;
+  background: transparent; border: 1px solid var(--border); color: var(--ink-2);
+  transition: color .12s, border-color .12s, background .12s;
+}
+.tag-btn:hover { color: var(--ink); }
+.tag-btn[aria-pressed="true"] { color: var(--band-ink); border-color: transparent; }
+.tag-btn[aria-pressed="true"][data-color="0"] { background: var(--tag-0); }
+.tag-btn[aria-pressed="true"][data-color="1"] { background: var(--tag-1); }
+.tag-btn[aria-pressed="true"][data-color="2"] { background: var(--tag-2); }
+.tag-btn[aria-pressed="true"][data-color="3"] { background: var(--tag-3); }
+.tag-btn[aria-pressed="true"][data-color="4"] { background: var(--tag-4); }
+.tag-btn[aria-pressed="true"][data-color="5"] { background: var(--tag-5); }
+.tag-btn[aria-pressed="true"][data-color="6"] { background: var(--tag-6); }
+/* With a band, the coloured top border goes away: it would be the same thing
+   said twice, and a line of colour above a band of the same colour reads as a
+   misaligned edge. */
+.card:has(.card-band) { border-top-color: var(--border); border-top-width: 1px; padding-top: .8rem; }
+
+/* The paper: the STATUS. The section says it too, but a section title scrolls
+   away and the paper does not: scrolling ninety cards, the background colour is
+   the only thing always saying where you are. The section that contains the
+   card carries it — no extra attribute to keep in sync. */
+.group[data-group="open"]   .card { background: var(--paper-open); }
+.group[data-group="paused"]  .card { background: var(--paper-paused); }
+.group[data-group="closed"] .card { background: var(--paper-closed); }
+/* Landing from a tick on the silence line. With nearly a hundred cards on the
+   page, a border lit for a second says "somewhere here", not WHICH: you land in
+   the middle of a grid and still have to hunt. For the length of the landing
+   the others dim — a spotlight, which the eye follows without searching — and
+   the target pulses twice. Anyone who asked for less motion keeps the spotlight
+   and loses the pulse: that is the ornament, the spotlight is the sign. */
+.card.flash {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring-flash);
+  animation: pulse 1s ease-out 2;
+}
+.wrap.spotlight .card:not(.flash) { opacity: .22; }
+.wrap.spotlight .card.flash { opacity: 1; }
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 3px var(--ring-flash); }
+  35%  { box-shadow: 0 0 0 7px var(--ring-flash); }
+  100% { box-shadow: 0 0 0 3px var(--ring-flash); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.flash { animation: none; }
+  .card { transition: none; }
+}
+
+.card-top { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+/* The path IS the name: it is what gets copied, opened and searched for. In
+   mono, with the root prefix dimmed — the folder is the part that tells one
+   project from another. */
+/* One line, always: a long path is truncated with an ellipsis instead of
+   wrapping its trailing slash onto a line of its own. The whole path is in the
+   title attribute. */
+.card-path { font-family: var(--mono); font-size: .82rem; font-weight: 500;
+  color: var(--ink); flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.path-root { color: var(--ink-3); font-weight: 400; }
+
+/* the silence counter: mono, right-aligned */
+/* Status and silence are the same question — how warm is this card — and they
+   live in one element. The mark is saturated ink: that is what stands out from
+   the tinted paper of the status, which is nearly colourless. */
+.card-status { display: inline-flex; align-items: center; gap: .4rem; flex: none; }
+.silence-days { font-family: var(--mono); font-size: .74rem; color: var(--ink-3);
+  white-space: nowrap; flex: none; }
+.silence-days i { font-size: .68rem; margin-right: .2em; opacity: .8; }
+
+/* What it is about: the header's Description field, a subtitle of one or two
+   lines. The clamp at 3 no longer cuts anything that follows the convention —
+   it stays as a net for derived ones, which are someone else's prose. The whole
+   text is in the title attribute. */
+.card-desc {
+  margin: .45rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--ink-desc);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+/* Derived from the text because the field is missing: readable, but visibly
+   second choice. Not an error — a project whose header is not filled in yet. */
+.card-desc.derived { color: var(--ink-3); }
+.card-desc.empty-desc { color: var(--ink-3); font-style: italic; }
+.card-desc code { font-size: .9em; }
+
+.next-step { margin: .7rem 0 0; font-size: .82rem; color: var(--ink); line-height: 1.5; }
+.next-lbl { display: flex; align-items: center; gap: .4rem;
+  font-size: .6rem; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--ink-3); font-weight: 600; margin-bottom: .25rem; }
+.next-empty { color: var(--ink-3); font-style: italic; }
+
+/* The pencil that writes the next step. It sits on the LABEL and not in the
+   footer with the other commands, because it acts on the line right below it —
+   the one command on this card that says which text it edits by where it is.
+   Faint until the card is under the mouse: it is available on ninety cards at
+   once, and ninety pencils would be the loudest thing on the page. */
+/* The box is 24×24 (WCAG 2.5.8) while the pencil inside it stays small: the
+   padding is what a finger gets, the negative margin gives the row back the
+   space so the label does not grow taller for it. Measured at 375px: it was
+   13×13, which is a target only for a mouse. */
+.next-edit {
+  background: none; border: 0; cursor: pointer; line-height: 1;
+  padding: 6px; margin: -6px -4px;
+  min-width: 24px; min-height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3); opacity: 0; transition: opacity .15s, color .15s;
+}
+.next-edit i { font-size: .62rem; }
+.card:hover .next-edit, .next-edit:focus-visible { opacity: 1; }
+.next-edit:hover { color: var(--accent); }
+/* Touch has no hover: there the pencil is simply always there. */
+@media (hover: none) { .next-edit { opacity: 1; } }
+
+/* The box that replaces the line while it is being written. It lives inside the
+   card, in the place of the text it is replacing: an editor that opened
+   elsewhere would make you look away from the sentence you are rewriting. */
+.next-form { display: flex; flex-direction: column; gap: .4rem; margin-top: .1rem; }
+.next-form textarea {
+  width: 100%; resize: vertical;
+  background: var(--surface-2); border: 1px solid var(--accent); color: var(--ink);
+  border-radius: 8px; padding: .4rem .55rem;
+  font-family: var(--sans); font-size: .82rem; line-height: 1.5;
+}
+.next-form textarea:focus { outline: none; }
+.next-form-foot { display: flex; align-items: center; gap: .35rem; }
+.next-hint { font-size: .64rem; color: var(--ink-3); margin-right: auto; }
+.next-save { color: var(--accent); border-color: var(--bd-accent); }
+
+.waiting-box {
+  display: flex; align-items: flex-start; gap: .45rem; margin-top: .6rem;
+  padding: .45rem .6rem; font-size: .76rem; line-height: 1.45;
+  color: var(--ink-waiting-box); background: var(--wash-waiting-box);
+  border: 1px solid var(--bd-waiting-box); border-radius: 8px;
+}
+.waiting-box i { margin-top: .18rem; font-size: .74rem; flex: none; }
+
+.card-foot { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  margin-top: auto; padding-top: .5rem; }
+.card-date { font-family: var(--mono); font-size: .66rem; color: var(--ink-3);
+  margin-right: auto; }
+.card-date b { color: var(--ink-2); font-weight: 500; }
+.link {
+  display: inline-flex; align-items: center; gap: .32rem; text-decoration: none;
+  font-size: .72rem; color: var(--ink-2); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 7px; padding: .24rem .5rem;
+  transition: border-color .15s, color .15s;
+}
+.link:hover { border-color: var(--accent); color: var(--accent); }
+.link i { font-size: .68rem; }
+.link.copied { border-color: var(--st-done); color: var(--st-done); }
+
+.badge { font-family: var(--mono); font-size: .62rem; padding: .1rem .4rem;
+  border-radius: 5px; border: 1px solid var(--border); color: var(--ink-3); }
+.badge-warn { color: var(--ink-waiting-box); border-color: var(--bd-waiting-box); }
+.badge-bad  { color: var(--ink-alert); border-color: var(--bd-alert); }
+
+.empty { padding: 2rem 1rem; text-align: center; color: var(--ink-3); font-size: .86rem; }
+
+/* The note at the bottom: for the one thing the page cannot show any other way
+   — that a click went nowhere. Bottom left, out of the way of the cards, and it
+   goes on its own after a few seconds. */
+.note {
+  position: fixed; left: 1rem; bottom: 1rem; z-index: 50;
+  display: flex; align-items: center; gap: .55rem;
+  max-width: min(520px, calc(100vw - 2rem));
+  padding: .6rem .75rem; font-size: .78rem; line-height: 1.45;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--bd-waiting-box); border-radius: 10px;
+  box-shadow: 0 16px 40px -14px rgba(0,0,0,.7);
+}
+.note > i { color: var(--ink-waiting-box); flex: none; }
+.note .link { flex: none; margin-left: auto; }
+
+/* A closed project is recognised before being read: green accent and a step
+   back. It holds wherever it sits — including right after the button closed
+   it, before a refresh moves it into its section. */
+.card[data-status="done"] { opacity: .66; }
+.card[data-status="done"]:hover { opacity: 1; }
+
+/* The signature: which version, from which repository and which commit. The
+   separators sit between the parts rather than in the markup — so the first one
+   does not carry one in front, and copied text stays clean. */
+.foot { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border-soft);
+  display: flex; align-items: center; gap: .9rem; flex-wrap: wrap;
+  font-size: .72rem; color: var(--ink-3); }
+/* The separators are drawn BETWEEN the parts rather than written in the markup,
+   so the first one carries none in front and copied text stays clean. `* + *`
+   and not `span + span`: the attribution mark is a link when the project has a
+   URL, and a span when it has not — the dots must not depend on that. */
+.foot > * + *::before { content: "·"; margin-right: .9rem; color: var(--border); }
+/* The attribution mark. First in the footer because that is what it is: who
+   made this. Kept when the product is renamed — see NOTICE. */
+.sig-mark { font-family: var(--display); font-weight: 600; letter-spacing: .06em;
+  color: var(--ink-2); text-decoration: none; }
+a.sig-mark:hover { color: var(--accent); }
+.sig-version { font-family: var(--mono); color: var(--ink-2); }
+.sig-repo, .sig-commit { font-family: var(--mono); }
+.sig-commit { cursor: help; }
+/* The read time is not part of the signature: it sits bottom right, where you
+   look to know whether what you are reading is current. No leading dot — it is
+   not another item of that list. */
+.sig-read { margin-left: auto; display: inline-flex; align-items: center; gap: .4rem;
+  font-family: var(--mono); cursor: help; }
+.foot > .sig-read + *::before, .foot > * + .sig-read::before { content: none; }
+.sig-read i { font-size: .68rem; opacity: .7; }
+.sig-read b { color: var(--ink-2); font-weight: 500; }
+/* While the page is reloading because a file changed: you can see it coming,
+   instead of an unexplained jump. */
+.sig-read.refreshing { color: var(--accent); }
+.sig-read.refreshing b { color: var(--accent); }
+
+/* Closing or pausing writes into someone's file: the second click, the one
+   that actually writes, visibly is another click. */
+.status-btn.armed { color: var(--ink-alert); border-color: var(--bd-alert);
+  background: var(--wash-alert); }
+/* On a project already in that state, the command is the one bringing it back
+   to active: it takes the colour of the state being left. */
+.card[data-status="done"] .status-btn[data-target="done"] { color: var(--st-done); }
+.card[data-status="paused"] .status-btn[data-target="paused"] { color: var(--ink-2); }
+
+/* ---- the document in a window ------------------------------------------- */
+/* The card is the summary, this is the reading: it opens by clicking a card. */
+.card.openable { cursor: pointer; }
+/* Hover does NOT touch the top border: that one carries the status colour, and
+   losing it under the mouse takes away the one thing the card says without
+   being read. */
+.card.openable:hover { border-top-color: var(--bd-accent);
+  border-right-color: var(--bd-accent); border-bottom-color: var(--bd-accent); }
+.card.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ONE thing scrolls, `.doc-scroll`: capping both lights a second scrollbar,
+   the dialog's borders making it 2px shorter than what it grants its child.
+   ⚠️ `display` goes ONLY on [open], or it overrides the UA stylesheet's
+   `display: none` and a strip of the closed dialog stays on the page. */
+.doc[open] { display: flex; }
+.doc {
+  /* How far from the edge everything inside a window starts. ONE measure for
+     the heading and the body, so the title cannot drift from its own text. */
+  --doc-pad-x: 1.5rem;
+  flex-direction: column;
+  width: min(920px, 94vw); max-height: 88vh; overflow: hidden; padding: 0;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 24px 70px -20px rgba(0,0,0,.75);
+}
+.doc::backdrop { background: rgba(4,7,13,.72); backdrop-filter: blur(2px); }
+.doc-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 1.1rem var(--doc-pad-x) 1.7rem; }
+.doc-scroll:focus { outline: none; }
+/* 28×28 rather than the `.link` default, measured at 25×21 — under the 24 of
+   WCAG 2.5.8, and on a phone this is the only way out. Two selectors: the
+   document has a floating button, the forms close through their heading. */
+.doc-close, .doc-head button.link {
+  min-width: 28px; min-height: 28px; justify-content: center; }
+.doc-close { position: absolute; top: .7rem; right: .8rem; z-index: 2; }
+
+/* The close goes at the far end of the title bar, where every window keeps it.
+   ⚠️ In the flex line, NOT absolutely placed: `.doc-head` bleeds past the dialog
+   on both sides, so an offset from its right edge lands off-screen on a phone. */
+/* ⚠️ These three headings are children of the DIALOG, not of `.doc-scroll`, so
+   the bleed margins have nothing to cancel and pushed the bar past the dialog —
+   leaving the title flush against the border. No bleed, same inset as the body. */
+form.doc-head { display: flex; align-items: center; gap: .75rem;
+  margin-left: 0; margin-right: 0;
+  padding-left: var(--doc-pad-x); padding-right: var(--doc-pad-x); }
+form.doc-head .doc-close { position: static; margin-left: auto; }
+
+/* Heading: which file is being read and how fresh it is. Stuck to the top,
+   because scrolling a long document you lose track of which one it is. */
+.doc-head { position: sticky; top: 0; z-index: 1;
+  margin: -1.1rem calc(-1 * var(--doc-pad-x)) .9rem;
+  padding: .8rem 3rem .6rem var(--doc-pad-x); background: var(--surface);
+  border-bottom: 1px solid var(--border-soft); }
+.doc-path { margin: 0; font-family: var(--mono); font-size: .84rem; font-weight: 500; }
+.doc-meta { margin: .2rem 0 0; font-size: .7rem; color: var(--ink-3); }
+.doc-loading, .doc-empty { color: var(--ink-3); font-size: .85rem; padding: 1rem 0; }
+
+/* The body of the status document: prose, not components. A short measure, and
+   headings that stand out by weight and space rather than by size. */
+.doc-body { font-size: .87rem; line-height: 1.65; color: var(--ink-2); }
+.doc-body > *:first-child { margin-top: 0; }
+.doc-body h1, .doc-body h2, .doc-body h3, .doc-body h4 {
+  font-family: var(--display); color: var(--ink); line-height: 1.3;
+  margin: 1.6rem 0 .6rem; }
+.doc-body h1 { font-size: 1.15rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+.doc-body h2 { font-size: 1rem; }
+.doc-body h3 { font-size: .9rem; }
+.doc-body h4 { font-size: .84rem; color: var(--ink-2); }
+.doc-body p, .doc-body ul, .doc-body ol { margin: .7rem 0; }
+.doc-body li { margin: .25rem 0; }
+.doc-body li::marker { color: var(--ink-3); }
+.doc-body strong, .doc-body b { color: var(--ink); font-weight: 600; }
+.doc-body a { color: var(--accent); text-decoration: none; }
+.doc-body a:hover { text-decoration: underline; }
+.doc-body hr { border: 0; border-top: 1px solid var(--border-soft); margin: 1.4rem 0; }
+.doc-body blockquote { margin: .8rem 0; padding: .1rem 0 .1rem .9rem;
+  border-left: 2px solid var(--border); color: var(--ink-3); }
+.doc-body code { font-family: var(--mono); font-size: .88em;
+  background: var(--surface-2); padding: .08em .4em; border-radius: 5px; color: var(--ink-2); }
+.doc-body pre { background: var(--plane); border: 1px solid var(--border-soft);
+  border-radius: 9px; padding: .7rem .9rem; overflow-x: auto; margin: .8rem 0; }
+.doc-body pre code { background: none; padding: 0; font-size: .8rem; line-height: 1.55;
+  color: var(--ink-2); }
+/* Tables are half of these documents: they scroll on their own instead of
+   widening the window. */
+.doc-body table { width: 100%; border-collapse: collapse; margin: .9rem 0; font-size: .82rem;
+  display: block; overflow-x: auto; }
+.doc-body th, .doc-body td { border: 1px solid var(--border-soft);
+  padding: .35rem .6rem; text-align: left; vertical-align: top; }
+.doc-body th { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.doc-body input[type="checkbox"] { margin-right: .45rem; accent-color: var(--accent); }
+.doc-body img { max-width: 100%; }
+
+/* ---- responsive ----------------------------------------------------------
+   Measured in Chrome at 375, 390 and 768 px (14/08/2026), not declared. What
+   the measuring found, and what each rule below answers:
+
+     * nothing overflowed sideways, at any of the three widths — the one thing
+       that was already right;
+     * the first card began at **648px** on a 812px screen: nearly a whole
+       screenful of preamble before the first piece of content. That is the
+       real mobile defect, and it is not a defect of any single element — it is
+       the sum of a paragraph, three paddings and a margin;
+     * two targets were under 24×24 (see `.next-edit` and `.doc-close`).
+
+   The one number to keep honest when touching this: how far down the first
+   card starts. */
+@media (max-width: 1500px) { .brand-flow { display: none; } }
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: 1fr; }
+  .search { margin-left: 0; width: 100%; max-width: none; }
+  .search input { width: 100%; }
+
+  /* The paragraph explaining the silence line is four lines here and taller
+     than the line it explains. It is teaching, not data: the axis keeps its two
+     ends written on it ("30 days ago" / "today") and every tick keeps its title
+     and its screen-reader label, so nothing is lost that was being read. */
+  .silence-hint { display: none; }
+
+  /* The topbar wraps onto two rows here and, being sticky, keeps 105px of a
+     812px screen for a wordmark and three buttons — for the whole scroll. On a
+     phone it scrolls away instead: getting back to the top is a gesture the
+     system already provides, and the screen is the scarce thing. */
+  .topbar { position: static; padding: .5rem .7rem; gap: .6rem; }
+  .brand-mark { width: 32px; height: 32px; font-size: .95rem; }
+
+  /* Air tuned for a mouse costs a screenful on a phone. */
+  .wrap { padding: .7rem .7rem 2rem; }
+  .silence { padding: .7rem .8rem .8rem; margin-bottom: .7rem; }
+  .silence-axis { height: 46px; margin-bottom: 1.1rem; }
+  /* Five rows of filters at 375px, 189px of them. Only the box around them is
+     tightened here: shrinking the BUTTONS was measured and bought 2px, at the
+     price of smaller targets — a bad trade, and not made. The one thing that
+     would actually take a row out is putting the least used tags behind an
+     "others"; nobody has built it. */
+  .filterbar { gap: .45rem; padding: .5rem .55rem; margin-bottom: .8rem; }
+  .group { margin-bottom: 1.2rem; }
+
+  /* A modal on a phone is the screen, not a sheet floating on it: at 375px the
+     backdrop was a 17px margin all round, which is not a way out — it is a
+     mis-tap waiting to happen. The close button is the way out, and it is 28px. */
+  .doc { width: 100vw; max-width: none; max-height: 100vh; height: 100vh;
+         border: 0; border-radius: 0; --doc-pad-x: 1rem; }
+  .doc-scroll { padding-top: 1rem; padding-bottom: 2rem; }
+  .doc-head { margin-top: -1rem; margin-bottom: .8rem; }
+  /* The root buttons of the new-project form wrap instead of pushing the form
+     sideways: there can be more roots than fit on one line. */
+  .form-new .segmented { flex-wrap: wrap; align-self: stretch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::after { animation: none !important; transition: none !important; }
+}
+
+
+/* ---- the new project form ------------------------------------------------ */
+.form-new { display: flex; flex-direction: column; gap: 1rem; padding: .2rem 0 .6rem; }
+.form-new label { display: flex; flex-direction: column; gap: .35rem;
+  font-size: .78rem; font-weight: 600; color: var(--ink-2); }
+.form-new input, .form-new textarea {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+  border-radius: 8px; padding: .5rem .6rem; font-size: .85rem; font-family: var(--sans);
+  font-weight: 400; resize: vertical;
+}
+.form-new input { font-family: var(--mono); }
+.form-new input:focus, .form-new textarea:focus { outline: none; border-color: var(--accent); }
+.form-new small { font-weight: 400; font-size: .7rem; color: var(--ink-3); }
+.form-new .segmented { align-self: flex-start; }
+.root-choice.on { background: var(--accent-solid); color: var(--accent-ink); font-weight: 600; }
+.form-error { margin: 0; padding: .5rem .7rem; border-radius: 8px;
+  font-size: .78rem; color: var(--ink-alert);
+  background: var(--wash-alert); border: 1px solid var(--bd-alert); }
+.form-footer { display: flex; justify-content: flex-end; }
+.ctl-primary { background: var(--accent-solid); color: var(--accent-ink);
+  border-color: var(--accent-solid); font-weight: 600; }
+
+/* ---- the first run ------------------------------------------------------
+   Same tokens as the dashboard, deliberately: the setup page is the first
+   thing anybody sees, and if it looked like a different application the
+   dashboard would arrive as a surprise. One column, because there is one
+   question that matters and four with sensible answers already in them. */
+.setup { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.2rem 4rem; }
+.setup h1 { display: flex; align-items: center; gap: .55rem;
+  margin: 0 0 1.4rem; font-size: 1.5rem; letter-spacing: -.02em; }
+.setup h2 { margin: 0 0 .8rem; font-size: .82rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
+.setup-lead { margin: 0 0 1rem; color: var(--ink-2); line-height: 1.55; }
+.setup-lead code { font-family: var(--mono); font-size: .82em; color: var(--ink); }
+.setup-hint { margin: 0 0 .7rem; font-size: .78rem; color: var(--ink-3); }
+
+.setup-block { margin: 0 0 1.6rem; padding: 1.1rem 1.2rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+
+.setup-picks { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
+.setup-pick { display: flex; align-items: center; gap: .6rem; cursor: pointer;
+  padding: .5rem .65rem; border-radius: 8px; border: 1px solid var(--border-soft);
+  background: var(--surface-2); }
+.setup-pick:hover { border-color: var(--accent); }
+.setup-pick-path { flex: 1; font-family: var(--mono); font-size: .82rem;
+  color: var(--ink); overflow-wrap: anywhere; }
+.setup-pick-count { flex: none; font-size: .74rem; color: var(--ink-3); }
+
+.setup-field { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem;
+  margin-bottom: .7rem; font-size: .84rem; color: var(--ink-2); }
+.setup-field > span { flex: none; }
+.setup-field input[type="text"] { flex: 1; min-width: 12rem; }
+.setup-field input, .setup-field select { padding: .42rem .6rem; border-radius: 8px;
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+  font-size: .84rem; font-family: var(--mono); }
+.setup-field input:focus, .setup-field select:focus { outline: none;
+  border-color: var(--accent); }
+.setup-check { align-items: flex-start; line-height: 1.5; }
+.setup-check span { flex: 1; min-width: 14rem; }
+
+/* The two skill windows: prose, one command to copy, and a line reporting what
+   happened. Narrower than the document window — this is reading, not scanning. */
+.skill-body { padding: 1rem var(--doc-pad-x) 1.3rem; max-width: 46rem; }
+.skill-body p { margin: 0 0 .9rem; line-height: 1.6; color: var(--ink-desc); }
+.skill-body code { font-family: var(--mono); font-size: .82rem; color: var(--ink); }
+.skill-note { font-size: .84rem; color: var(--ink-3); }
+/* The prompt is pasted somewhere else, so it wraps rather than scrolls: a line
+   running off the side is a line somebody copies half of. */
+.skill-prompt {
+  margin: 0 0 .5rem; padding: .7rem .8rem;
+  background: var(--surface-2); border: 1px solid var(--border-soft);
+  border-radius: 8px; font-family: var(--mono); font-size: .8rem;
+  line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+  color: var(--ink);
+}
+
+/* The same shape inside the "New project" window: a checkbox whose label runs
+   to two lines, with the small print under it.
+   ⚠️ `.form-new label` stacks its contents (`flex-direction: column`) and wins
+   on specificity, so a checkbox landed ABOVE its own text. Measured in the
+   browser; the selector below is what puts it back beside it. */
+.form-new .form-check {
+  display: flex; flex-direction: row; align-items: flex-start;
+  gap: .6rem; line-height: 1.5; font-weight: 400;
+}
+.form-check input { margin-top: .25rem; }
+.form-check span { flex: 1; }
+.form-check small { display: block; margin-top: .15rem; color: var(--ink-3); font-weight: 400; }
+
+.setup-error { margin: 0 0 1rem; padding: .55rem .75rem; border-radius: 8px;
+  font-size: .8rem; color: var(--ink-alert); background: var(--wash-alert);
+  border: 1px solid var(--bd-alert); }
+
+.setup-go { padding: .6rem 1.4rem; border-radius: 9px; cursor: pointer;
+  background: var(--accent-solid); color: var(--accent-ink);
+  border: 1px solid var(--accent-solid); font: inherit; font-weight: 600; }
+.setup-go:disabled { opacity: .6; cursor: default; }
+
+@media (max-width: 560px) {
+  .setup { padding: 1.6rem .9rem 3rem; }
+  .setup-block { padding: .9rem .8rem; }
+}
+
+/* The language switcher, next to the theme one and built the same way: a
+   segmented control where the current choice is pressed. It is a pair of LINKS
+   and not buttons — the language lives in the URL like the staleness threshold,
+   so switching is a navigation, it survives a refresh, and the page can be sent
+   to somebody in the language it was read in. */
+.seg-lang a { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.1rem; padding: .34rem .5rem; font-size: .72rem; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; text-decoration: none;
+  color: var(--ink-2); }
+.seg-lang a[aria-current="true"] { background: var(--accent-solid);
+  color: var(--accent-ink); }

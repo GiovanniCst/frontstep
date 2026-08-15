@@ -1,0 +1,141 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor because that is where `tomllib` arrived, and the
+        # floor is declared in pyproject.toml. Running it here is what makes the
+        # declaration a fact rather than a hope.
+        #
+        # 3.14 is here for the same reason from the other end: a Fedora live
+        # image installed Frontstep on 3.14 in August 2026, so it is what a user
+        # gets today, not a version to get ready for.
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        # Windows and macOS at the two ENDS of the range rather than all four.
+        # The middle versions have never been the ones that break; the platform
+        # has. This project was written on Linux and WSL, and everything it does
+        # to a path, a config directory or a process is different on the other
+        # two — until August 2026 neither had ever run the suite at all, and
+        # macOS had never run a line of it anywhere.
+        include:
+          - {os: windows-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.14"}
+          - {os: macos-latest, python: "3.11"}
+          - {os: macos-latest, python: "3.14"}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . pytest
+
+      - name: Tests
+        run: python -m pytest tests/ -q
+
+      # Not an assertion — a printout. `doctor` says what THIS machine has, and
+      # the three runners are three machines nobody here owns: it is where we
+      # find out which terminal and which editor macOS and Windows resolve to,
+      # and where the configuration would go. It must not fail the job: a runner
+      # with no desktop is not a broken machine, which is a lesson this CI
+      # already taught once, in red, on 0.3.0.
+      - name: What this machine has
+        run: python -m frontstep doctor || true
+
+  # ---- the instructions, executed ------------------------------------------
+  #
+  # The README told everybody to run `uv tool install frontstep`, naming a
+  # package that has never existed on PyPI, and its fallbacks assumed a `pip`
+  # that most distributions do not ship. Measured on stock images in August
+  # 2026: Debian 13 and Ubuntu 24.04 carry python3 with neither `pip` nor
+  # `ensurepip`, so even `python3 -m venv` refuses; the Fedora and Arch base
+  # images have no Python at all. Instructions nobody runs are a promise, and
+  # this is what turns them into a test.
+
+  install-on-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ["debian:13", "ubuntu:24.04", "fedora:latest",
+                 "archlinux:latest", "opensuse/tumbleweed", "alpine:latest"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./ci/install_on_distro.sh "${{ matrix.distro }}"
+
+  install-on-desktop:
+    # The same three lines a person reads in the README, on the two systems
+    # nobody here owns.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv, which brings its own Python
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+            echo "$USERPROFILE\\.local\\bin" >> "$GITHUB_PATH"
+          else
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Install Frontstep the way the README says
+        shell: bash
+        run: uv tool install .
+
+      - name: It has to be runnable under its own name
+        shell: bash
+        run: |
+          frontstep --version
+          frontstep doctor
+
+  package:
+    # A wheel that does not build is a release that fails at the worst moment,
+    # and the templates, static files and assets live in the package: this is
+    # what catches one of them not being included.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install --upgrade pip build
+      - run: python -m build
+      - name: The wheel carries the page, not just the code
+        run: |
+          python - <<'PY'
+          import pathlib, zipfile
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          names = set(zipfile.ZipFile(wheel).namelist())
+          needed = [
+              "frontstep/templates/index.html",
+              "frontstep/templates/_card.html",
+              "frontstep/static/frontstep.css",
+              "frontstep/static/frontstep.js",
+              "frontstep/assets/SKILL.md",
+          ]
+          missing = [n for n in needed if n not in names]
+          assert not missing, f"missing from {wheel.name}: {missing}"
+          print(f"{wheel.name}: {len(names)} files, all of the page included")
+          PY

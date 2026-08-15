@@ -1,0 +1,36 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# local configuration and data: never in the repo
+.env
+frontstep.toml
+config.toml
+
+# agent instructions generated locally
+.claude/
+
+# local working documents
+*_PLAN.md
+DEV_*_PLAN.md
+ROADBLOCK_*.md
+techdebt.md
+archived/
+
+# release tooling, not part of the product
+scripts/audit_before_push.py
+
+# the long-form development log
+DEVLOG.md
+
+# The status document Frontstep reads on the machine it is developed on. What
+# ships is CURRENT_STATUS.public.md, renamed into place in the release commit.
+CURRENT_STATUS.md
+
+# the release tool for taking this repository public, not part of the product
+scripts/make_release.sh

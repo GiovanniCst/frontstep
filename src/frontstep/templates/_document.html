@@ -1,0 +1,15 @@
+{# The body of the window a card opens: the whole status document, read again at
+   request time. A fragment, not a page: the JS injects it. #}
+{% if doc %}
+<div class="doc-head">
+  <p class="doc-path">{{ doc.name }}<span class="path-root">/{{ doc.file }}</span></p>
+  <p class="doc-meta">{{ doc.lines }} {{ t("lines") }} · {{ t("file changed on") }}
+    {{ doc.mtime.strftime('%Y-%m-%d') }} {{ t("at") }} {{ doc.mtime.strftime('%H:%M') }}</p>
+</div>
+<article class="doc-body">{{ doc.text | md_doc }}</article>
+{% else %}
+<div class="doc-head">
+  <p class="doc-path">{{ name }}</p>
+</div>
+<p class="doc-empty">{{ t("This project has no status document to show: it only appears in the index.") }}</p>
+{% endif %}

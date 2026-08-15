@@ -1,0 +1,122 @@
+<!doctype html>
+{#
+  The first run, in the browser.
+
+  It replaces a list of questions asked in a terminal, and it is a page rather
+  than a wizard on purpose: there are five answers, four of them have a sensible
+  default, and pagination would turn a single screen into four.
+
+  Without the key from the terminal this same template renders the short refusal
+  instead — one template, so the two can never drift into looking like different
+  applications.
+#}
+<html lang="{{ lang }}" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if token %}<meta name="frontstep-token" content="{{ token }}">{% endif %}
+  <title>{{ t("Frontstep — set up") }}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🗺️</text></svg>">
+  <link href="{{ url_for('static', filename='fonts.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='fontawesome.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='frontstep.css') }}" rel="stylesheet">
+  <script>
+    (function () {
+      var p = null;
+      try { p = localStorage.getItem("frontstep-theme"); } catch (e) { /* privacy mode */ }
+      var light = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+      document.documentElement.setAttribute(
+        "data-theme", p === "light" || p === "dark" ? p : (light ? "light" : "dark"));
+    })();
+  </script>
+</head>
+<body>
+
+<main class="setup">
+  <h1><span class="brand-mark"><i class="fas fa-map-signs"></i></span> Frontstep</h1>
+
+{% if not token %}
+  {# No key. Not an error to apologise for: the terminal has the address, and
+     saying exactly where beats explaining what a key is. #}
+  <p class="setup-lead">{{ t("Frontstep is waiting to be set up, and the address to do it at is in the terminal you started it from — it has a key on the end.") }}</p>
+  <p class="setup-lead"><b>{{ t("Go and copy that line.") }}</b> {{ t("The key is there because this page decides which folders Frontstep may read and write, and on a machine with more than one account, being able to reach a port is not the same as being the person sitting at it.") }}</p>
+{% else %}
+
+  <p class="setup-lead">{{ t("One page derived from your projects' status documents. Tell it where they are — you can change any of this later in") }}
+    <code>{{ config_path }}</code>.</p>
+
+  <form id="setup-form" novalidate>
+    <section class="setup-block">
+      <h2>{{ t("Where your projects are") }}</h2>
+      {% if suggestions %}
+      <p class="setup-hint">{{ t("Found on this machine. The count is how many folders inside already have a status document — zero everywhere is normal on a first run, since nobody has written one yet.") }}</p>
+      <div class="setup-picks">
+        {% for s in suggestions %}
+        {# The first one is ticked, full stop. It used to be ticked only if it
+           already held projects, which on a FIRST RUN is never — so nobody
+           arrived with anything selected and pressing Start produced an error
+           instead of a dashboard. Measured on a clean machine. #}
+        <label class="setup-pick">
+          <input type="checkbox" name="root" value="{{ s.path }}"
+                 data-label="{{ s.label }}"{% if loop.first %} checked{% endif %}>
+          <span class="setup-pick-path">{{ s.path }}</span>
+          {# On one line: a newline inside would put whitespace between the
+             number and the word, and this text is read as a phrase. #}
+          <span class="setup-pick-count">{{ s.projects }} {{ t("project") if s.projects == 1 else t("projects") }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <label class="setup-field">
+        <span>{{ t("Another folder") }}</span>
+        <input type="text" id="extra-root" placeholder="~/work" autocomplete="off">
+      </label>
+    </section>
+
+    <section class="setup-block">
+      <h2>{{ t("How it should behave") }}</h2>
+      <label class="setup-field">
+        <span>{{ t("Language for new status documents and for this page") }}</span>
+        <select id="language">
+          <option value="en" selected>English</option>
+          <option value="it">Italiano</option>
+        </select>
+      </label>
+      <label class="setup-field">
+        <span>{{ t("A project is quiet after") }}</span>
+        <input type="number" id="stale-days" value="7" min="1" max="365"> {{ t("days") }}
+      </label>
+      <label class="setup-field setup-check">
+        <input type="checkbox" id="writable" checked>
+        <span>{{ t("May Frontstep write to your status documents? It only ever rewrites named lines of the header — the status, the date and the next step — and never anything else in the file.") }}</span>
+      </label>
+      {# Offered only when `~/.claude` is already there — a folder existing is a
+         fact, and on a machine without it this program has no business creating
+         another program's configuration directory. Whoever unticks it finds the
+         same thing behind the "Skill: Claude" button on the page. #}
+      {% if claude_here %}
+      <label class="setup-field setup-check">
+        <input type="checkbox" id="skill" checked>
+        <span>{{ t("Install the agent skill for Claude Code, which is what keeps these documents up to date") }}
+          <small>{{ skill_path }}</small>
+        </span>
+      </label>
+      {% endif %}
+    </section>
+
+    <p class="setup-error" id="setup-error" hidden></p>
+    <button class="setup-go" type="submit">
+      <i class="fas fa-check"></i> {{ t("Start") }}</button>
+  </form>
+{% endif %}
+</main>
+
+{# The strings the SCRIPT writes into the page after a click — everything else
+   is rendered above, already translated. A JSON block rather than variables so
+   the two scripts read the same catalogue with the same keys, and one sentence
+   cannot end up with two translations. Empty in English: there, the key IS the
+   text. #}
+<script type="application/json" id="i18n">{{ js_strings }}</script>
+<script src="{{ url_for('static', filename='setup.js') }}"></script>
+</body>
+</html>

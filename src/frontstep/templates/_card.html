@@ -1,0 +1,220 @@
+{# One card = one project, in three fixed rows:
+     1. where it lives (path from its root) and how long it has been quiet
+     2. what it is — from the Description field, or derived from the document
+     3. what happens next session
+   The data-* attributes are what the JS filters on: the searchable text is
+   precomputed here, so the filter never rummages through the DOM.
+   The card is a summary: `data-doc` tells the JS which document to open, and
+   the card only becomes clickable when a document actually exists. #}
+{% set days = p.days_silent %}
+{% set openable = p.has_status_file and p.folder %}
+<article class="card{{ ' openable' if openable }}"
+         id="project-{{ p.ident }}"
+         {% if openable %}data-doc="{{ p.folder }}" data-root="{{ p.root }}" tabindex="0"
+         aria-haspopup="dialog" title='{{ t("Open the status document") }}'{% endif %}
+         data-status="{{ p.status }}"
+         data-days="{{ days if days is not none else -1 }}"
+         {# Tags separated by spaces, with a space at both edges too: the filter
+            looks for " tag " so that `prod` does not match `prod-old`. #}
+         data-tags=" {{ p.tags | join(' ') }} "
+         data-search="{{ (p.name ~ ' ' ~ p.title ~ ' ' ~ p.description ~ ' ' ~ p.next_step ~ ' ' ~ p.waiting_for ~ ' ' ~ p.tags | join(' ') ~ ' ' ~ p.prod_note) | lower }}">
+
+  {# The band on top: its colour is the PRIMARY tag — the first one, inherited
+     from the root — and it carries the APP name, not the folder. One strong
+     colour channel only: five coloured tags would turn the card back into
+     noise, so the others are badges in the footer. Where no app name is
+     declared the band stays the thin line: a tall empty band is space spent
+     for nothing. #}
+  {% set primary = p.tags[0] if p.tags else '' %}
+  {% if p.app_name %}
+  <div class="card-band" data-color="{{ tag_color(primary) }}">{{ p.app_name }}</div>
+  {% endif %}
+
+  <div class="card-top">
+    {% if p.folder %}
+    <span class="card-path" title="{{ p.host_folder }}/"
+      {# The trailing separator comes from the prefix, not from here. It used to
+         be a literal `/`, which on Windows produced
+         `%USERPROFILE%\Documents\name/` — the path corrected everywhere except
+         its last character. #}
+      ><span class="path-root">{{ p.prefix }}</span>{{ p.folder }}<span class="path-root">{{ p.prefix[-1] }}</span></span>
+    {% else %}
+    <span class="card-path" title='{{ t("A project with no folder of its own") }}'>{{ p.name }}</span>
+    {% endif %}
+    {# No status dot: the card's paper already says it, and repeating it in a
+       9px mark would be the same thing said twice. For anyone who does not see
+       the colour the word is still there, read out by a screen reader. #}
+    <span class="card-status">
+      <span class="sr-only">{{ t(p.status_label, "card") }},</span>
+      {% if days is not none %}
+      <span class="silence-days"
+            title='{{ t("Last change declared") }}: {{ p.updated.strftime("%Y-%m-%d") if p.updated else t("not declared, using the file date") }}'>
+        <i class="fas fa-hourglass-half"></i>{{ days }}{{ t("d") }}</span>
+      {% endif %}
+    </span>
+  </div>
+
+  {% if p.description %}
+  {%- set description_note %}
+    {%- if not p.description_derived %}
+    {%- elif p.has_status_file %}
+
+{{ t("Taken from the text of the document: the Description field is missing.") }}
+    {%- else %}
+
+{{ t("Taken from the index line: this project has no status document.") }}
+    {%- endif %}
+  {%- endset %}
+  <p class="card-desc{{ ' derived' if p.description_derived }}"
+     title="{{ p.description }}{{ description_note }}">{{ p.description | md }}</p>
+  {% elif p.has_status_file %}
+  <p class="card-desc empty-desc">{{ t("No") }} <code>{{ t("Description") }}</code> {{ t("field, and no prose in the document to derive one from.") }}</p>
+  {% endif %}
+
+  {# The next step is the one line on the card that gets rewritten every
+     session, so it is the one that can be written FROM the card — the third
+     place this app writes into somebody else's file.
+
+     The pencil only appears where there is a `Next step` LINE to rewrite: same
+     rule as Close and Pause, and the same reason — a command whose only
+     possible outcome is an error is worse than no command. An empty line still
+     counts, and is in fact the case you most want to fill in from here. #}
+  <p class="next-step">
+    <span class="next-lbl">
+      {{ t("Next step") if p.has_status_file else t("Index only") }}
+      {% if writable and p.has_next_step and p.folder %}
+      {# `data-value` carries the RAW line, because what is shown next to it has
+         been through the markdown filter: prefilling the box from the rendered
+         text would turn `**§4**` into `§4` and then write that back. #}
+      <button class="next-edit" type="button"
+              data-project="{{ p.folder }}" data-root="{{ p.root }}"
+              data-value="{{ p.next_step }}"
+              title='{{ t("Write the next step in the header of") }} {{ p.status_file }}'
+              aria-label='{{ t("Edit the next step") }}'><i class="fas fa-pen"></i></button>
+      {% endif %}
+    </span>
+    <span class="next-text">
+    {%- if p.has_status_file %}
+      {%- if p.next_step %}{{ p.next_step | md }}
+      {%- else %}<span class="next-empty">{{ t("not declared") }}</span>{% endif %}
+    {%- else %}
+      <span class="next-empty">{{ t("no status document in the folder") }}</span>
+    {%- endif %}
+    </span>
+  </p>
+
+  {% if p.waiting_for %}
+  <div class="waiting-box"><i class="fas fa-user-clock"></i><span>{{ p.waiting_for | md }}</span></div>
+  {% endif %}
+
+  <div class="card-foot">
+    <span class="card-date">
+      {% if p.updated %}<b>{{ p.updated.strftime('%Y-%m-%d') }}</b>{% else %}{{ t("no date declared") }}{% endif %}
+      {%- if p.mtime %} · {{ t("file") }} {{ p.mtime.strftime('%Y-%m-%d') }}{% endif %}
+    </span>
+
+    {# The tags, minus the first one which is already on the band. `prod` brings
+       its note along — the name of the service or container — because it is the
+       one tag whose VALUE says something more than the tag itself. #}
+    {# `tag`, not `t`: the loop variable would shadow the translation function
+       for the whole block, and the next person to add a label in here would get
+       "str is not callable" for a reason invisible at the point of the error. #}
+    {% for tag in p.tags[1:] if p.tags | length > 1 %}
+    <span class="badge badge-tag" data-color="{{ tag_color(tag) }}"
+          {% if tag == 'prod' and p.prod_note %}title="{{ p.prod_note }}"{% endif %}>{{ tag }}</span>
+    {% endfor %}
+
+    {% if not p.has_status_file %}
+      <span class="badge badge-bad" title='{{ t("This folder has no status document") }}'>{{ t("no document") }}</span>
+    {% else %}
+      {# The line that decides everything is the status one: without it the
+         project is "undeclared" and the buttons that rewrite it do not appear.
+         The badge says so, telling a document with no header apart from one
+         that has a header but an incomplete one — which would otherwise look
+         fine. #}
+      {% if not p.has_header %}<span class="badge badge-bad">{{ t("no header") }}</span>
+      {% elif not p.has_status %}
+      <span class="badge badge-bad" title='{{ t("The status line is missing: that is the one declaring who holds the ball, and without it this project cannot be closed or paused from here") }}'>{{ t("no") }} <code>Status</code></span>
+      {% endif %}
+      {% if not p.canonical_casing %}
+      <span class="badge badge-warn" title='{{ t("The canonical name is CURRENT_STATUS.md") }}'>{{ p.status_filename }}</span>
+      {% endif %}
+      {% if p.header_behind %}
+      <span class="badge badge-warn" title='{{ t("The file was touched after the date its header declares") }}'>{{ t("header behind") }}</span>
+      {% endif %}
+
+      {# Terminal and Editor. A page served over http:// cannot start a program
+         — that is the browser's barrier, not a choice — but the SERVER runs on
+         the same machine as whoever is looking, so the button asks it to.
+
+         When it cannot — `launch = false`, or a container — Terminal falls back
+         to the `frontstep://` handler in contrib/, and Editor goes: see below.
+
+         When the server does open them, the title says WITH WHAT. That is the
+         difference between this and the button it replaces: it named no
+         program, so when nothing happened there was nothing to go and check. #}
+      {% if terminal %}
+      <button class="link open-terminal" type="button"
+              data-root="{{ p.root }}" data-project="{{ p.folder }}"
+              {# The NAME is translated too, but only where it describes what
+                 will open instead of naming a program (`DESCRIBED_NAMES`):
+                 those three are interface. A program keeps its own name, which
+                 is the same word in every language. #}
+              title='{{ t("Open a terminal in") }} {{ p.host_folder }} ({{ program_name(terminal.name) }})'><i class="fas fa-terminal"></i> {{ t("Terminal") }}</button>
+      {% else %}
+      <a class="link open-terminal handler" href="frontstep://{{ p.root }}/{{ p.folder }}"
+         title='{{ t("Open a terminal in") }} {{ p.host_folder }}'><i class="fas fa-terminal"></i> {{ t("Terminal") }}</a>
+      {% endif %}
+
+      {% if editor %}
+      {# The tooltip has to name what will actually appear. Every detection asks
+         the system for the DOCUMENT (`wants="file"`); a configuration with `{}`
+         asks for the folder instead. It used to say "the folder" and show the
+         folder's path in both cases, while handing over the file — visible the
+         first time anybody pressed it on Fedora, where a text editor opened
+         with CURRENT_STATUS.md in it. #}
+      {%- set opens_file = editor.wants == "file" %}
+      <button class="link open-editor" type="button"
+              data-root="{{ p.root }}" data-project="{{ p.folder }}"
+              title='{{ t("Open the document with") if opens_file else t("Open the folder with") }} {{ program_name(editor.name) }}: {{ p.status_file if opens_file else p.host_folder }}'><i class="fas fa-code"></i> {{ t("Editor") }}</button>
+      {% endif %}
+      {# No Editor button when the server cannot open one. It used to fall back
+         to a `vscode://` link, which names a program: from a page, the only way
+         to start anything is a registered URI scheme, and there is no scheme
+         meaning "whatever this system opens .md with". Naming one editor for
+         everybody is the opposite of what Terminal and Editor are for, so the
+         button goes and Path stays — copying always works. #}
+
+      {# No file:// link: from a page served over http:// the browser blocks it
+         silently, and a button that does nothing is worse than no button.
+         Copying the path is the way that always works. #}
+      <button class="link copy-path" type="button" data-path="{{ p.status_file }}"
+              title='{{ t("Copy") }} {{ p.status_file }}'>
+        <i class="far fa-copy"></i> {{ t("Path") }}</button>
+
+      {# The writes: they move the header's status to `done` or `paused`, and
+         from there back to `active`. Two steps each, because a single click
+         would change somebody else's file. The face of each button is written
+         by the JS from the card's current status, so the two commands stay
+         consistent with each other after a write; `hidden` falls with it: with
+         no JS, no mute button appears. #}
+      {% if writable and p.has_status and p.folder %}
+      {% for target in ['done', 'paused'] %}
+      <button class="link status-btn" type="button" hidden
+              data-project="{{ p.folder }}" data-root="{{ p.root }}"
+              data-target="{{ target }}"
+              data-file="{{ p.status_file }}"></button>
+      {% endfor %}
+      {% endif %}
+    {% endif %}
+
+    {# The repository's remote, if the project has one: GitHub, GitLab, a Gitea
+       at home or anything else. The label stays neutral because the host is
+       visible in the tooltip, and guessing it from the domain would be one more
+       mapping to keep. #}
+    {% if p.remote_url %}
+    <a class="link" href="{{ p.remote_url }}" target="_blank" rel="noopener"
+       title="{{ p.remote_url }}"><i class="fas fa-code-branch"></i> {{ t("Repo") }}</a>
+    {% endif %}
+  </div>
+</article>

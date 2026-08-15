@@ -1,0 +1,50 @@
+# Frontstep in a container.
+#
+#   docker compose up -d      → http://127.0.0.1:9015
+#
+# Two things have to be mounted, and neither can be guessed: the configuration,
+# and the folders your projects are in. Copy this file, change the two paths,
+# and remember that the paths INSIDE the container are what goes in the TOML.
+
+services:
+  frontstep:
+    build: .
+    image: frontstep:0.5.2
+    container_name: frontstep
+    restart: unless-stopped
+
+    # ⚠️ Bound to localhost on purpose. Frontstep has no authentication and
+    # writes in the files it is shown: `9015:9015` alone would publish it on
+    # every interface of the host. If you do mean to reach it from another
+    # machine, put it behind something that authenticates, and consider
+    # `writable = false`.
+    ports:
+      - "127.0.0.1:9015:9015"
+
+    volumes:
+      # The configuration. Read-only: the app never rewrites it.
+      - ./config.toml:/config/config.toml:ro
+      # Your projects. NOT read-only — this is what Close, Pause and the pencil
+      # write into. Mount it :ro and set `writable = false` if you want a
+      # dashboard that only ever reads.
+      - ${FRONTSTEP_ROOT:-~/projects}:/projects
+
+    environment:
+      # Dates are read by a person, in their timezone. Set yours.
+      TZ: ${TZ:-Etc/UTC}
+      # These win over the file, for the settings a container has opinions about.
+      FRONTSTEP_BIND: 0.0.0.0
+
+    # The uid the image runs as (10001) has to be able to write in the mounted
+    # folders. The simplest way is to run as yourself:
+    #   user: "${UID:-1000}:${GID:-1000}"
+
+    healthcheck:
+      # /health does not touch the projects' filesystem: it says the app is up,
+      # not that the disk is reachable.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9015/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
